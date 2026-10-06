@@ -142,13 +142,24 @@ class ApiClient {
     return data;
   }
 
-  async logout() {
-    try {
-      await this.request('/auth/logout', { method: 'POST' });
-    } catch (e) {
-      // ignore
-    }
+  logout() {
+    const token = this.token;
     this.clearAuth();
+    if (!token) return;
+
+    fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      }
+    }).then((response) => {
+      if (!response.ok) {
+        console.warn(`Server logout returned status ${response.status}.`);
+      }
+    }).catch((error) => {
+      console.warn('Server logout request failed:', error.message);
+    });
   }
 
   // --- Password Reset Endpoints ---
@@ -353,6 +364,12 @@ class ApiClient {
     return this.request(`/workspaces/${workspaceId}/members`, {
       method: 'POST',
       body: JSON.stringify({ email, role }),
+    });
+  }
+
+  async removeWorkspaceMember(workspaceId, userId) {
+    return this.request(`/workspaces/${workspaceId}/members/${userId}`, {
+      method: 'DELETE',
     });
   }
 

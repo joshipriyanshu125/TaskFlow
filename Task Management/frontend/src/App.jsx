@@ -15,14 +15,63 @@ import { Check, AlertCircle, Users } from 'lucide-react';
 
 const INITIAL_FALLBACK_TASKS = [];
 
+function readCachedValue(key, fallback) {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch (error) {
+    console.warn(`Could not read cached app data (${key}):`, error);
+    return fallback;
+  }
+}
+
+function readCachedArray(key) {
+  const value = readCachedValue(key, []);
+  return Array.isArray(value) ? value : [];
+}
+
+function writeCachedValue(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn(`Could not cache app data (${key}):`, error);
+  }
+}
+
+function workspaceCacheKey(userId) {
+  return `taskflow_workspace_data_${userId}`;
+}
+
+function tasksCacheKey(userId, workspaceId) {
+  return `taskflow_tasks_${userId}_${workspaceId}`;
+}
+
 export function App() {
   const [user, setUser] = useState(api.user);
-  const [authLoading, setAuthLoading] = useState(Boolean(api.token));
-  const [tasks, setTasks] = useState([]);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [currentWorkspace, setCurrentWorkspace] = useState(null);
+  const [workspaces, setWorkspaces] = useState(() => (
+    api.user?._id ? readCachedArray(workspaceCacheKey(api.user._id)) : []
+  ));
+  const [currentWorkspace, setCurrentWorkspace] = useState(() => {
+    if (!api.user?._id) return null;
+    const cachedWorkspace = readCachedValue(`taskflow_currentWorkspace_${api.user._id}`, null);
+    return cachedWorkspace && typeof cachedWorkspace === 'object' && cachedWorkspace._id
+      ? cachedWorkspace
+      : null;
+  });
+  const [tasks, setTasks] = useState(() => (
+    api.user?._id
+      ? readCachedArray(
+        tasksCacheKey(
+          api.user._id,
+          readCachedValue(`taskflow_currentWorkspace_${api.user._id}`, null)?._id
+        ),
+        []
+      )
+      : []
+  ));
   const [teams, setTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
+  const [visitedViews, setVisitedViews] = useState(['dashboard']);
   const [mainNavView, setMainNavView] = useState(() => {
     const saved = localStorage.getItem('taskflow_mainNavView');
     return saved === 'admin' || saved === 'team' || saved === 'dashboard' ? saved : 'dashboard';
@@ -48,6 +97,7 @@ export function App() {
       setTasks([]);
       setWorkspaces([]);
       setCurrentWorkspace(null);
+      setTeams([]);
       setMainNavView('dashboard');
       showToast('Session expired. Please sign in again.', 'error');
     };
@@ -69,12 +119,12 @@ export function App() {
     localStorage.setItem('taskflow_mainNavView', mainNavView);
   }, [mainNavView]);
 
-  // Initial Auth Check & profile synchronization
+  // Validate the cached session without blocking the cached page from rendering.
   useEffect(() => {
     if (api.token) {
       api.getMe()
         .then((res) => {
-          if (res?.user) {
+          if (api.token && res?.user) {
             setUser(res.user);
             const saved = localStorage.getItem('taskflow_mainNavView');
             if (res.user.role === 'admin') {
@@ -94,13 +144,8 @@ export function App() {
         })
         .catch((err) => {
           console.warn('Initial auth check noticed:', err.message);
-          setUser(null);
-        })
-        .finally(() => {
-          setAuthLoading(false);
+          if (api.token) setUser(null);
         });
-    } else {
-      setAuthLoading(false);
     }
   }, []);
 
@@ -109,15 +154,16 @@ export function App() {
     if (!user?._id) return;
     try {
       const res = await api.getWorkspaces();
+      if (!api.token || api.user?._id !== user._id) return;
       if (Array.isArray(res?.workspaces)) {
         const savedWorkspaceId = localStorage.getItem(`taskflow_workspace_${user._id}`);
+        const selectedWorkspace = res.workspaces.find((w) => w._id === savedWorkspaceId) || res.workspaces[0] || null;
         setWorkspaces(res.workspaces);
-        setCurrentWorkspace((current) => {
-          if (current && res.workspaces.some((w) => w._id === current._id)) {
-            return current;
-          }
-          return res.workspaces.find((w) => w._id === savedWorkspaceId) || res.workspaces[0] || null;
-        });
+        writeCachedValue(workspaceCacheKey(user._id), res.workspaces);
+        setCurrentWorkspace(selectedWorkspace);
+        if (selectedWorkspace && selectedWorkspace._id !== savedWorkspaceId) {
+          setTasks(readCachedArray(tasksCacheKey(user._id, selectedWorkspace._id)));
+        }
       }
     } catch (err) {
       console.warn('Fetch workspaces error:', err);
@@ -129,10 +175,14 @@ export function App() {
     if (!user?._id) return;
     try {
       const res = await api.getTasks({ workspaceId: currentWorkspace?._id });
-      setTasks(res?.tasks || []);
+      if (!api.token || api.user?._id !== user._id) return;
+      const nextTasks = res?.tasks || [];
+      setTasks(nextTasks);
+      if (currentWorkspace?._id) {
+        writeCachedValue(tasksCacheKey(user._id, currentWorkspace._id), nextTasks);
+      }
     } catch (err) {
       console.warn('Fetch tasks error:', err.message);
-      setTasks([]);
     }
   }, [user?._id, currentWorkspace?._id]);
 
@@ -145,6 +195,7 @@ export function App() {
     setTeamsLoading(true);
     try {
       const res = await api.getTeams(currentWorkspace._id);
+      if (!api.token || api.user?._id !== user._id) return;
       if (Array.isArray(res?.teams)) {
         setTeams(res.teams);
       } else {
@@ -162,23 +213,30 @@ export function App() {
   useEffect(() => {
     if (user?._id && currentWorkspace?._id) {
       localStorage.setItem(`taskflow_workspace_${user._id}`, currentWorkspace._id);
+      writeCachedValue(`taskflow_currentWorkspace_${user._id}`, currentWorkspace);
     }
   }, [user?._id, currentWorkspace?._id]);
 
+  useEffect(() => {
+    if (user?._id && currentWorkspace?._id) {
+      writeCachedValue(tasksCacheKey(user._id, currentWorkspace._id), tasks);
+    }
+  }, [user?._id, currentWorkspace?._id, tasks]);
+
   // Initial workspaces fetch on user sign-in
   useEffect(() => {
-    if (user?._id && !authLoading) {
+    if (user?._id) {
       fetchWorkspaces();
     }
-  }, [user?._id, authLoading, fetchWorkspaces]);
+  }, [user?._id, fetchWorkspaces]);
 
   // Fetch tasks and teams when current workspace is active
   useEffect(() => {
-    if (user?._id && !authLoading) {
+    if (user?._id) {
       fetchTasks();
       fetchTeams();
     }
-  }, [user?._id, currentWorkspace?._id, authLoading, fetchTasks, fetchTeams]);
+  }, [user?._id, currentWorkspace?._id, fetchTasks, fetchTeams]);
 
   // Real-time Socket.IO Subscriptions
   useEffect(() => {
@@ -271,7 +329,20 @@ export function App() {
 
   // Auth Handlers
   const handleAuthSuccess = (authenticatedUser) => {
+    const cachedWorkspaces = readCachedArray(workspaceCacheKey(authenticatedUser._id));
+    const savedWorkspaceId = localStorage.getItem(`taskflow_workspace_${authenticatedUser._id}`);
+    const cachedWorkspace = readCachedValue(`taskflow_currentWorkspace_${authenticatedUser._id}`, null);
+    const selectedWorkspace = cachedWorkspaces.find((workspace) => workspace._id === savedWorkspaceId)
+      || cachedWorkspaces.find((workspace) => workspace._id === cachedWorkspace?._id)
+      || cachedWorkspaces[0]
+      || null;
+
     setUser(authenticatedUser);
+    setWorkspaces(cachedWorkspaces);
+    setCurrentWorkspace(selectedWorkspace);
+    setTasks(selectedWorkspace
+      ? readCachedArray(tasksCacheKey(authenticatedUser._id, selectedWorkspace._id))
+      : []);
     setAuthModal({ isOpen: false, mode: 'signin' });
     updateSocketAuth(api.token);
     const saved = localStorage.getItem('taskflow_mainNavView');
@@ -283,15 +354,32 @@ export function App() {
     showToast(`Welcome, ${authenticatedUser.name}!`);
   };
 
-  const handleLogout = async () => {
-    await api.logout();
+  const handleLogout = () => {
+    void api.logout();
     setUser(null);
     setTasks([]);
     setWorkspaces([]);
     setCurrentWorkspace(null);
+    setTeams([]);
+    updateSocketAuth(null);
     setMainNavView('dashboard');
     localStorage.removeItem('taskflow_mainNavView');
     showToast('Signed out successfully.');
+  };
+
+  const handleWorkspaceChange = (workspace) => {
+    setCurrentWorkspace(workspace);
+    if (user?._id && workspace?._id) {
+      setTasks(readCachedArray(tasksCacheKey(user._id, workspace._id)));
+    }
+  };
+
+  const handleNavigate = (view) => {
+    if (view === 'admin' && user?.role !== 'admin') {
+      view = 'dashboard';
+    }
+    setMainNavView(view);
+    setVisitedViews((visited) => visited.includes(view) ? visited : [...visited, view]);
   };
 
   // Task Handlers
@@ -369,17 +457,6 @@ export function App() {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FAF7F2' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ width: '40px', height: '40px', border: '3px solid rgba(194, 85, 8, 0.2)', borderTopColor: '#C25508', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 500 }}>Loading TaskFlow...</span>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Top Navbar */}
@@ -390,39 +467,47 @@ export function App() {
         onLogout={handleLogout}
         workspaces={workspaces}
         currentWorkspace={currentWorkspace}
-        setCurrentWorkspace={setCurrentWorkspace}
+        setCurrentWorkspace={handleWorkspaceChange}
         currentView={mainNavView}
-        onNavigate={setMainNavView}
+        onNavigate={handleNavigate}
       />
 
       {/* Main Content Area */}
       <div style={{ flex: 1 }}>
         {user ? (
-          mainNavView === 'admin' && user?.role === 'admin' ? (
-            <AdminPanel currentUser={user} onShowToast={showToast} />
-          ) : mainNavView === 'team' ? (
-            <TeamBoardView
-              currentWorkspace={currentWorkspace}
-              user={user}
-              teams={teams}
-              loading={teamsLoading}
-              onFetchTeams={fetchTeams}
-              onOpenTeamModal={(tab = 'list') => setTeamModalState({ isOpen: true, tab })}
-            />
-          ) : (
-            <Dashboard
-              tasks={tasks}
-              user={user}
-              currentWorkspace={currentWorkspace}
-              onOpenWorkspaceModal={(tab = 'invite') => setWorkspaceModalState({ isOpen: true, tab })}
-              onToggleTask={handleToggleTask}
-              onOpenNewTask={(date) => setTaskModal({ isOpen: true, task: null, defaultDate: date || null })}
-              onEditTask={(task) => setTaskModal({ isOpen: true, task, defaultDate: null })}
-              onOpenTaskDetail={(task) => setDetailDrawerTask(task)}
-              onDeleteTask={handleDeleteTask}
-              onReorderTasks={handleReorderTasks}
-            />
-          )
+          <>
+            <div style={{ display: mainNavView !== 'admin' || user.role !== 'admin' ? 'block' : 'none' }}>
+              <Dashboard
+                tasks={tasks}
+                user={user}
+                currentWorkspace={currentWorkspace}
+                onOpenWorkspaceModal={(tab = 'invite') => setWorkspaceModalState({ isOpen: true, tab })}
+                onToggleTask={handleToggleTask}
+                onOpenNewTask={(date) => setTaskModal({ isOpen: true, task: null, defaultDate: date || null })}
+                onEditTask={(task) => setTaskModal({ isOpen: true, task, defaultDate: null })}
+                onOpenTaskDetail={(task) => setDetailDrawerTask(task)}
+                onDeleteTask={handleDeleteTask}
+                onReorderTasks={handleReorderTasks}
+              />
+            </div>
+            {user.role === 'admin' && visitedViews.includes('admin') && (
+              <div style={{ display: mainNavView === 'admin' ? 'block' : 'none' }}>
+                <AdminPanel currentUser={user} onShowToast={showToast} />
+              </div>
+            )}
+            {visitedViews.includes('team') && (
+              <div style={{ display: mainNavView === 'team' ? 'block' : 'none' }}>
+                <TeamBoardView
+                  currentWorkspace={currentWorkspace}
+                  user={user}
+                  teams={teams}
+                  loading={teamsLoading}
+                  onFetchTeams={fetchTeams}
+                  onOpenTeamModal={(tab = 'list') => setTeamModalState({ isOpen: true, tab })}
+                />
+              </div>
+            )}
+          </>
         ) : (
           <LandingPage onOpenAuth={(mode) => setAuthModal({ isOpen: true, mode })} />
         )}

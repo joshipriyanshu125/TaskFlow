@@ -149,7 +149,15 @@ workspaceRouter.delete("/:id", async (req, res, next) => {
 workspaceRouter.get("/:id/members", async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid workspace ID." });
-    const members = await WorkspaceMember.find({ workspaceId: req.params.id }).populate("userId", "name email avatarUrl");
+    const requesterMembership = await WorkspaceMember.findOne({
+      workspaceId: req.params.id,
+      userId: req.userId,
+      status: "active"
+    });
+    if (!requesterMembership) return res.status(403).json({ message: "Access denied to this workspace." });
+
+    const members = await WorkspaceMember.find({ workspaceId: req.params.id, status: "active" })
+      .populate("userId", "name email avatarUrl");
     return res.json({ members });
   } catch (error) {
     return next(error);
@@ -169,12 +177,16 @@ workspaceRouter.post("/:id/members", async (req, res, next) => {
     if (!workspace) return res.status(404).json({ message: "Workspace not found." });
 
     // Only owner/admin can invite if workspace doesn't allow member invites
-    const isPrivileged = ["owner", "admin"].includes(requesterMembership.role);
+    const isWorkspaceOwner = workspace.ownerId.toString() === req.userId.toString();
+    const isPrivileged = isWorkspaceOwner || requesterMembership.role === "admin";
     if (!isPrivileged && !workspace.settings?.allowMemberInvites) {
       return res.status(403).json({ message: "Only workspace admins can invite members in this workspace." });
     }
 
     const { email, role } = z.object({ email: z.string().email(), role: z.enum(workspaceMemberRoles).optional() }).parse(req.body);
+    if (role === "owner" || (role === "admin" && !isPrivileged)) {
+      return res.status(403).json({ message: "Only workspace owners or admins can invite admins, and ownership cannot be reassigned." });
+    }
     const inviter = await User.findById(req.userId).select("name email");
 
     // Check if the invited email belongs to an existing registered user
@@ -246,12 +258,36 @@ workspaceRouter.post("/:id/members", async (req, res, next) => {
 // Remove member from workspace
 workspaceRouter.delete("/:id/members/:userId", async (req, res, next) => {
   try {
+    if (!Types.ObjectId.isValid(req.params.id) || !Types.ObjectId.isValid(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid workspace or member ID." });
+    }
+
+    const workspace = await Workspace.findById(req.params.id);
+    if (!workspace) return res.status(404).json({ message: "Workspace not found." });
+
+    const [requesterMembership, targetMembership] = await Promise.all([
+      WorkspaceMember.findOne({ workspaceId: req.params.id, userId: req.userId, status: "active" }),
+      WorkspaceMember.findOne({ workspaceId: req.params.id, userId: req.params.userId, status: "active" })
+    ]);
+    if (!requesterMembership) return res.status(403).json({ message: "You must be an active workspace member to remove members." });
+    if (!targetMembership) return res.status(404).json({ message: "Workspace member not found." });
+
+    const isWorkspaceOwner = workspace.ownerId.toString() === req.userId.toString();
+    const isWorkspaceAdmin = requesterMembership.role === "admin";
     const isSelf = req.params.userId === req.userId.toString();
-    const isAdmin = await WorkspaceMember.findOne({ workspaceId: req.params.id, userId: req.userId, role: { $in: ["owner", "admin"] } });
+    const isTargetOwner = workspace.ownerId.toString() === req.params.userId || targetMembership.role === "owner";
 
-    if (!isSelf && !isAdmin) return res.status(403).json({ message: "Insufficient permissions to remove this member." });
+    if (isTargetOwner) {
+      return res.status(403).json({ message: "The workspace owner cannot be removed." });
+    }
+    if (!isSelf && !isWorkspaceOwner && !isWorkspaceAdmin) {
+      return res.status(403).json({ message: "Only workspace admins or owners can remove other members." });
+    }
+    if (!isSelf && isWorkspaceAdmin && targetMembership.role === "admin") {
+      return res.status(403).json({ message: "Only the workspace owner can remove another admin." });
+    }
 
-    await WorkspaceMember.findOneAndDelete({ workspaceId: req.params.id, userId: req.params.userId });
+    await WorkspaceMember.findByIdAndDelete(targetMembership._id);
     return res.status(204).send();
   } catch (error) {
     return next(error);

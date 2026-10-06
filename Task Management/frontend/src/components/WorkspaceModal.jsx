@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FolderPlus, UserPlus, Loader2, Check } from 'lucide-react';
+import { X, FolderPlus, UserPlus, Loader2, Check, Trash2 } from 'lucide-react';
 import { api } from '../api';
 
 export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWorkspace, initialTab = 'create' }) {
@@ -10,6 +10,7 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWor
   const [inviteRole, setInviteRole] = useState('member');
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -19,7 +20,8 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWor
       const res = await api.getWorkspaceMembers(currentWorkspace._id);
       if (res?.members) setMembers(res.members);
     } catch (e) {
-      // ignore
+      console.error('Workspace members could not be loaded:', e);
+      setErrorMsg(e.message || 'Workspace members could not be loaded.');
     }
   }, [currentWorkspace]);
 
@@ -90,6 +92,33 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWor
       setLoading(false);
     }
   };
+
+  const handleRemoveMember = async (member) => {
+    const memberUserId = member.userId?._id;
+    if (!currentWorkspace?._id || !memberUserId) return;
+
+    const memberName = member.userId?.name || member.userId?.email || 'this member';
+    if (!window.confirm(`Remove ${memberName} from this workspace?`)) return;
+
+    setRemovingMemberId(memberUserId);
+    setErrorMsg('');
+    setSuccessMsg('');
+    try {
+      await api.removeWorkspaceMember(currentWorkspace._id, memberUserId);
+      setMembers((current) => current.filter((item) => item.userId?._id !== memberUserId));
+      setSuccessMsg(`${memberName} was removed from the workspace.`);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to remove workspace member.');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
+  const ownerId = typeof currentWorkspace?.ownerId === 'string'
+    ? currentWorkspace.ownerId
+    : currentWorkspace?.ownerId?._id;
+  const isWorkspaceOwner = currentWorkspace?.currentUserRole === 'owner' || ownerId === api.user?._id;
+  const canManageMembers = isWorkspaceOwner || currentWorkspace?.currentUserRole === 'admin';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -231,8 +260,8 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWor
                 <label className="form-label">Role</label>
                 <select className="form-select" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
                   <option value="member">Member (Can edit tasks)</option>
-                  <option value="admin">Admin (Can manage settings)</option>
-                  <option value="viewer">Viewer (Read-only)</option>
+                  {canManageMembers && <option value="admin">Admin (Can manage settings)</option>}
+                  <option value="guest">Guest (Read-only)</option>
                 </select>
               </div>
 
@@ -254,30 +283,57 @@ export function WorkspaceModal({ isOpen, onClose, onWorkspaceCreated, currentWor
                 </h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', maxHeight: '140px', overflowY: 'auto' }}>
                   {members.map((m) => (
-                    <div
-                      key={m._id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0.4rem 0.6rem',
-                        backgroundColor: '#F8F6F0',
-                        borderRadius: '8px',
-                        fontSize: '0.825rem'
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: '#E4DDD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
-                          {(m.userId?.name || m.userId?.email || 'U').charAt(0).toUpperCase()}
+                    (() => {
+                      const memberUserId = m.userId?._id;
+                      const isOwnerMember = m.role === 'owner' || memberUserId === ownerId;
+                      const canRemoveMember = canManageMembers
+                        && !isOwnerMember
+                        && (isWorkspaceOwner || m.role !== 'admin');
+
+                      return (
+                        <div
+                          key={m._id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '0.4rem 0.6rem',
+                            backgroundColor: '#F8F6F0',
+                            borderRadius: '8px',
+                            fontSize: '0.825rem'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
+                            <div style={{ width: 22, height: 22, flexShrink: 0, borderRadius: '50%', backgroundColor: '#E4DDD2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700 }}>
+                              {(m.userId?.name || m.userId?.email || 'U').charAt(0).toUpperCase()}
+                            </div>
+                            <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {m.userId?.name || m.userId?.email}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexShrink: 0 }}>
+                            <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '100px', backgroundColor: '#EAE6DF', textTransform: 'capitalize', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                              {m.role}
+                            </span>
+                            {canRemoveMember && (
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => handleRemoveMember(m)}
+                                disabled={removingMemberId === memberUserId}
+                                aria-label={`Remove ${m.userId?.name || m.userId?.email || 'member'} from workspace`}
+                                title="Remove from workspace"
+                                style={{ color: '#B42318', padding: '0.2rem' }}
+                              >
+                                {removingMemberId === memberUserId
+                                  ? <Loader2 size={15} className="animate-spin" />
+                                  : <Trash2 size={15} />}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {m.userId?.name || m.userId?.email}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '100px', backgroundColor: '#EAE6DF', textTransform: 'capitalize', fontWeight: 600, color: 'var(--text-secondary)' }}>
-                        {m.role}
-                      </span>
-                    </div>
+                      );
+                    })()
                   ))}
                 </div>
               </div>

@@ -131,6 +131,89 @@ describe("Protected Routes", () => {
   });
 });
 
+describe("Workspace Member Management", () => {
+  it("allows workspace admins and owners to remove members with role protections", async () => {
+    const password = "securePassword123";
+    const createUser = async (name) => {
+      const { status, body } = await request("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          email: `workspace-${name.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`,
+          password
+        })
+      });
+      assert.equal(status, 201);
+      return body;
+    };
+    const authenticated = (token) => ({ Authorization: `Bearer ${token}` });
+
+    const owner = await createUser("Workspace Owner");
+    const admin = await createUser("Workspace Admin");
+    const member = await createUser("Workspace Member");
+
+    const workspaceResponse = await request("/api/workspaces", {
+      method: "POST",
+      headers: authenticated(owner.token),
+      body: JSON.stringify({ name: "Member Removal Test" })
+    });
+    assert.equal(workspaceResponse.status, 201);
+    const workspaceId = workspaceResponse.body.workspace._id;
+
+    for (const [user, role] of [[admin, "admin"], [member, "member"]]) {
+      const inviteResponse = await request(`/api/workspaces/${workspaceId}/members`, {
+        method: "POST",
+        headers: authenticated(owner.token),
+        body: JSON.stringify({ email: user.user.email, role })
+      });
+      assert.equal(inviteResponse.status, 201);
+    }
+
+    const memberCannotGrantAdmin = await request(`/api/workspaces/${workspaceId}/members`, {
+      method: "POST",
+      headers: authenticated(member.token),
+      body: JSON.stringify({ email: `not-added-${Date.now()}@test.local`, role: "admin" })
+    });
+    assert.equal(memberCannotGrantAdmin.status, 403);
+
+    const memberCannotRemoveAdmin = await request(`/api/workspaces/${workspaceId}/members/${admin.user._id}`, {
+      method: "DELETE",
+      headers: authenticated(member.token)
+    });
+    assert.equal(memberCannotRemoveAdmin.status, 403);
+
+    const adminCannotRemoveOwner = await request(`/api/workspaces/${workspaceId}/members/${owner.user._id}`, {
+      method: "DELETE",
+      headers: authenticated(admin.token)
+    });
+    assert.equal(adminCannotRemoveOwner.status, 403);
+
+    const adminRemoval = await request(`/api/workspaces/${workspaceId}/members/${member.user._id}`, {
+      method: "DELETE",
+      headers: authenticated(admin.token)
+    });
+    assert.equal(adminRemoval.status, 204);
+
+    const ownerRemoval = await request(`/api/workspaces/${workspaceId}/members/${admin.user._id}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(ownerRemoval.status, 204);
+
+    const ownerCannotRemoveSelf = await request(`/api/workspaces/${workspaceId}/members/${owner.user._id}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(ownerCannotRemoveSelf.status, 403);
+
+    const deleteWorkspace = await request(`/api/workspaces/${workspaceId}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(deleteWorkspace.status, 204);
+  });
+});
+
 describe("Input Validation", () => {
   let token;
 
