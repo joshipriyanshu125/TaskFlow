@@ -1,16 +1,18 @@
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
 
-// Gmail SMTP configuration
-const gmailUser = process.env.SMTP_USER;
-const gmailPass = process.env.SMTP_PASS;
+const gmailUser = config.smtp.user;
+const gmailPass = config.smtp.pass;
+const RESEND_API_URL = "https://api.resend.com/emails";
 
 let transporter = null;
 
-if (gmailUser && gmailPass) {
+if (!config.resendApiKey && gmailUser && gmailPass) {
   try {
     transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: config.smtp.host,
+      port: config.smtp.port,
+      secure: config.smtp.port === 465,
       auth: {
         user: gmailUser,
         pass: gmailPass,
@@ -18,20 +20,56 @@ if (gmailUser && gmailPass) {
     });
     console.log("[Email] Gmail transporter initialized successfully");
   } catch (error) {
-    console.error("[Email] Failed to initialize Gmail transporter:", error.message);
+    console.error("[Email] Failed to initialize SMTP transporter:", error.message);
   }
-} else {
-  console.warn("[Email] Gmail credentials not found in .env - emails will fail");
 }
 
 export async function sendEmail({ to, subject, html, text }) {
-  if (!transporter) {
-    console.error("[Email] Transporter not available - check SMTP_USER and SMTP_PASS in .env");
-    return { success: false, message: "Email service not configured" };
-  }
-
   if (!to) {
     return { success: false, message: "Recipient email is required" };
+  }
+
+  if (config.resendApiKey) {
+    if (!config.smtp.from) {
+      console.error("[Email] EMAIL_FROM is required when using the Resend API.");
+      return { success: false, message: "Email sender is not configured" };
+    }
+
+    try {
+      const response = await fetch(RESEND_API_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.resendApiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          from: config.smtp.from,
+          to: [to],
+          subject,
+          ...(text || html ? { text: text || html.replace(/<[^>]*>?/gm, "") } : {}),
+          ...(html ? { html } : {})
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const result = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const message = result?.message || result?.error || `Resend returned HTTP ${response.status}`;
+        console.error(`[Email] Resend failed to send to ${to}: ${message}`);
+        return { success: false, error: message };
+      }
+
+      console.log(`[Email] Sent to ${to} via Resend: ${result.id || "accepted"}`);
+      return { success: true, messageId: result.id };
+    } catch (error) {
+      console.error(`[Email] Resend request failed for ${to}:`, error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  if (!transporter) {
+    console.error("[Email] No email transport is configured.");
+    return { success: false, message: "Email service not configured" };
   }
 
   try {
@@ -48,7 +86,7 @@ export async function sendEmail({ to, subject, html, text }) {
   } catch (error) {
     console.error(`[Email] Failed to send to ${to}:`, error.message);
 
-    // Handle Gmail specific errors
+    // Handle Gmail-specific authentication errors
     if (error.code === 'EAUTH') {
       console.error("[Email] Authentication failed - check Gmail app password settings");
     }

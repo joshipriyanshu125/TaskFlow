@@ -8,6 +8,7 @@ import { User } from "../models/User.js";
 import { UserRole } from "../models/UserRole.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendTeamInvitationEmail } from "../services/email.js";
+import { eventBus } from "../services/events.js";
 
 const teamInput = z.object({
   workspaceId: z.string().refine(Types.ObjectId.isValid, "Invalid workspace ID"),

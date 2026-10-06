@@ -205,8 +205,7 @@ workspaceRouter.post("/:id/members", async (req, res, next) => {
 
     if (!targetUser) {
       // User not registered yet — send an invitation email with signup link
-      const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
-      const signupLink = `${clientOrigin}?invite=1&workspace=${encodeURIComponent(workspace.slug)}&email=${encodeURIComponent(email)}`;
+      const signupLink = `${config.clientOrigin}?invite=1&workspace=${encodeURIComponent(workspace.slug)}&email=${encodeURIComponent(email)}`;
 
       sendWorkspaceInviteToNewUser({
         to: email,

@@ -19,6 +19,22 @@ An Express and MongoDB API for a private task-management app. Every task is owne
 
 The root endpoint (`GET /`) returns API information and points to the health check at `GET /health`. The API runs on `http://localhost:5000` by default.
 
+## Email delivery on Render
+
+Render may block outbound SMTP connections, which causes Gmail SMTP sends to time out. Configure the Resend HTTPS API instead:
+
+1. Create a Resend API key and verify the sending domain you want to use.
+2. In the Render backend environment, set `RESEND_API_KEY` and `EMAIL_FROM` (for example, `TaskFlow <no-reply@your-verified-domain.com>`).
+3. Redeploy the backend. The Resend API is preferred whenever `RESEND_API_KEY` is set; SMTP remains available as a fallback for local development.
+
+Never commit API keys or add them to source code.
+
+## Frontend deployment settings
+
+For the current Vercel deployment, set the Render backend environment variable `CLIENT_ORIGIN` to `https://taskflow-frontend-two-ecru.vercel.app`. This URL is used for password-reset and workspace-invitation links. The same origin is allowed by the backend CORS policy by default in production.
+
+If the frontend has additional production domains or Vercel preview domains, add their exact origins as a comma-separated `CORS_ORIGINS` value in Render. Do not include paths; for example: `https://app.example.com,https://preview.example.com`.
+
 ## API summary
 
 | Method | Route | Description |

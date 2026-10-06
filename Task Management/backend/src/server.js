@@ -34,9 +34,10 @@ const server = http.createServer(app);
 // Initialize Real-time WebSockets
 initSocketServer(server);
 
-// CORS configuration supporting dynamic local ports and clientOrigin
+// Allow the configured frontend origins and local development origins.
 const allowedOrigins = [
   config.clientOrigin,
+  ...config.corsOrigins,
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:3000",
@@ -56,7 +57,7 @@ app.use(
       ) {
         return callback(null, true);
       }
-      return callback(null, true);
+      return callback(new Error("Origin is not allowed by CORS."));
     },
     credentials: true,
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
