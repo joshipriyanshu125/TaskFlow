@@ -476,7 +476,7 @@ export function App() {
       <div style={{ flex: 1 }}>
         {user ? (
           <>
-            <div style={{ display: mainNavView !== 'admin' || user.role !== 'admin' ? 'block' : 'none' }}>
+            <div style={{ display: mainNavView === 'dashboard' ? 'block' : 'none' }}>
               <Dashboard
                 tasks={tasks}
                 user={user}

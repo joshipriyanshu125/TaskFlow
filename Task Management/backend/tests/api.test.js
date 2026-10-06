@@ -176,31 +176,31 @@ describe("Workspace Member Management", () => {
     });
     assert.equal(memberCannotGrantAdmin.status, 403);
 
-    const memberCannotRemoveAdmin = await request(`/api/workspaces/${workspaceId}/members/${admin.user._id}`, {
+    const memberCannotRemoveAdmin = await request(`/api/workspaces/${workspaceId}/members/${admin.user.id}`, {
       method: "DELETE",
       headers: authenticated(member.token)
     });
     assert.equal(memberCannotRemoveAdmin.status, 403);
 
-    const adminCannotRemoveOwner = await request(`/api/workspaces/${workspaceId}/members/${owner.user._id}`, {
+    const adminCannotRemoveOwner = await request(`/api/workspaces/${workspaceId}/members/${owner.user.id}`, {
       method: "DELETE",
       headers: authenticated(admin.token)
     });
     assert.equal(adminCannotRemoveOwner.status, 403);
 
-    const adminRemoval = await request(`/api/workspaces/${workspaceId}/members/${member.user._id}`, {
+    const adminRemoval = await request(`/api/workspaces/${workspaceId}/members/${member.user.id}`, {
       method: "DELETE",
       headers: authenticated(admin.token)
     });
     assert.equal(adminRemoval.status, 204);
 
-    const ownerRemoval = await request(`/api/workspaces/${workspaceId}/members/${admin.user._id}`, {
+    const ownerRemoval = await request(`/api/workspaces/${workspaceId}/members/${admin.user.id}`, {
       method: "DELETE",
       headers: authenticated(owner.token)
     });
     assert.equal(ownerRemoval.status, 204);
 
-    const ownerCannotRemoveSelf = await request(`/api/workspaces/${workspaceId}/members/${owner.user._id}`, {
+    const ownerCannotRemoveSelf = await request(`/api/workspaces/${workspaceId}/members/${owner.user.id}`, {
       method: "DELETE",
       headers: authenticated(owner.token)
     });
@@ -211,6 +211,96 @@ describe("Workspace Member Management", () => {
       headers: authenticated(owner.token)
     });
     assert.equal(deleteWorkspace.status, 204);
+  });
+});
+
+describe("Team Member Management", () => {
+  it("allows workspace owners and admins to remove team members", async () => {
+    const createUser = async (name) => {
+      const { status, body } = await request("/api/auth/signup", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          email: `team-${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}-${Math.random().toString(36).slice(2)}@test.local`,
+          password: "securePassword123"
+        })
+      });
+      assert.equal(status, 201);
+      return body;
+    };
+    const authenticated = (token) => ({ Authorization: `Bearer ${token}` });
+
+    const owner = await createUser("Team Owner");
+    const admin = await createUser("Team Admin");
+    const member = await createUser("Team Member");
+
+    const workspaceResponse = await request("/api/workspaces", {
+      method: "POST",
+      headers: authenticated(owner.token),
+      body: JSON.stringify({ name: "Team Removal Test" })
+    });
+    assert.equal(workspaceResponse.status, 201);
+    const workspaceId = workspaceResponse.body.workspace._id;
+
+    for (const [user, role] of [[admin, "admin"], [member, "member"]]) {
+      const inviteResponse = await request(`/api/workspaces/${workspaceId}/members`, {
+        method: "POST",
+        headers: authenticated(owner.token),
+        body: JSON.stringify({ email: user.user.email, role })
+      });
+      assert.equal(inviteResponse.status, 201);
+    }
+
+    const teamResponse = await request("/api/teams", {
+      method: "POST",
+      headers: authenticated(owner.token),
+      body: JSON.stringify({ workspaceId, name: "Member Removal Team" })
+    });
+    assert.equal(teamResponse.status, 201);
+    const teamId = teamResponse.body.team._id;
+
+    const inviteToTeam = await request(`/api/teams/${teamId}/invite`, {
+      method: "POST",
+      headers: authenticated(owner.token),
+      body: JSON.stringify({ email: member.user.email })
+    });
+    assert.equal(inviteToTeam.status, 201);
+    const inviteAdminToTeam = await request(`/api/teams/${teamId}/invite`, {
+      method: "POST",
+      headers: authenticated(owner.token),
+      body: JSON.stringify({ email: admin.user.email })
+    });
+    assert.equal(inviteAdminToTeam.status, 201);
+
+    const teamAdminRemoval = await request(`/api/teams/${teamId}/members/${member.user.id}`, {
+      method: "DELETE",
+      headers: authenticated(admin.token)
+    });
+    assert.equal(teamAdminRemoval.status, 204);
+
+    const teamOwnerRemoval = await request(`/api/teams/${teamId}/members/${admin.user.id}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(teamOwnerRemoval.status, 204);
+
+    const listedWorkspaces = await request("/api/workspaces", {
+      headers: authenticated(owner.token)
+    });
+    assert.equal(listedWorkspaces.status, 200);
+    assert.ok(listedWorkspaces.body.workspaces.some((workspace) => workspace._id === workspaceId));
+
+    const removeTeam = await request(`/api/teams/${teamId}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(removeTeam.status, 204);
+
+    const removeWorkspace = await request(`/api/workspaces/${workspaceId}`, {
+      method: "DELETE",
+      headers: authenticated(owner.token)
+    });
+    assert.equal(removeWorkspace.status, 204);
   });
 });
 

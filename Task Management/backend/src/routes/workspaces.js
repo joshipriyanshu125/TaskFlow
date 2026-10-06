@@ -25,6 +25,17 @@ workspaceRouter.use(requireAuth);
 // List all workspaces user is a member of (auto-provisions default workspace if empty)
 workspaceRouter.get("/", async (req, res, next) => {
   try {
+    const ownedWorkspaces = await Workspace.find({ ownerId: req.userId }).select("_id");
+    if (ownedWorkspaces.length > 0) {
+      await WorkspaceMember.bulkWrite(ownedWorkspaces.map((workspace) => ({
+        updateOne: {
+          filter: { workspaceId: workspace._id, userId: req.userId },
+          update: { $set: { role: "owner", status: "active" } },
+          upsert: true
+        }
+      })));
+    }
+
     let memberships = await WorkspaceMember.find({ userId: req.userId, status: "active" }).populate("workspaceId");
     
     // Auto-create a default workspace if user has none
@@ -54,7 +65,7 @@ workspaceRouter.get("/", async (req, res, next) => {
       .filter((m) => m.workspaceId)
       .map((m) => ({
         ...m.workspaceId.toObject(),
-        currentUserRole: m.role
+        currentUserRole: m.workspaceId.ownerId.toString() === req.userId.toString() ? "owner" : m.role
       }));
     return res.json({ workspaces });
   } catch (error) {

@@ -21,11 +21,20 @@ export function TeamModal({
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
   const [loading, setLoading] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   const isControlled = Array.isArray(propTeams);
   const teams = isControlled ? propTeams : internalTeams;
+  const workspaceOwnerId = typeof currentWorkspace?.ownerId === 'string'
+    ? currentWorkspace.ownerId
+    : currentWorkspace?.ownerId?._id;
+  const isWorkspaceOwner = currentWorkspace?.currentUserRole === 'owner'
+    || workspaceOwnerId === api.user?._id;
+  const canManageTeamMembers = isWorkspaceOwner
+    || currentWorkspace?.currentUserRole === 'admin'
+    || api.user?.role === 'admin';
 
   const fetchTeams = useCallback(async () => {
     if (!currentWorkspace?._id) return;
@@ -109,9 +118,10 @@ export function TeamModal({
   };
 
   const handleRemoveMember = async (userId) => {
-    if (!activeTeam?._id) return;
+    if (!activeTeam?._id || !canManageTeamMembers) return;
     if (!window.confirm('Remove this member from the team?')) return;
 
+    setRemovingMemberId(userId);
     try {
       await api.removeTeamMember(activeTeam._id, userId);
       const updatedMembers = (activeTeam.members || []).filter((m) => (m.userId?._id || m.userId) !== userId);
@@ -127,6 +137,8 @@ export function TeamModal({
       if (onShowToast) onShowToast('Member removed from team.', 'success');
     } catch (err) {
       if (onShowToast) onShowToast(err.message || 'Failed to remove member.', 'error');
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -480,23 +492,28 @@ export function TeamModal({
                           </span>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMember(m.userId?._id || m.userId)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: '#DC2626',
-                          padding: '0.25rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                        title="Remove member (owner only)"
-                      >
-                        <Trash2 size={12} />
-                      </button>
+                      {canManageTeamMembers && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMember(m.userId?._id || m.userId)}
+                          disabled={removingMemberId === (m.userId?._id || m.userId)}
+                          aria-label={`Remove ${m.userId?.name || m.userId?.email || 'member'} from team`}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: '#DC2626',
+                            padding: '0.25rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            opacity: removingMemberId === (m.userId?._id || m.userId) ? 0.5 : 1
+                          }}
+                          title="Remove member (workspace admin or owner)"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

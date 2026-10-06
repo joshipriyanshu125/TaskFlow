@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckSquare, LogOut, User, FolderKanban, Plus, UserPlus, Shield, Users, Menu, X } from 'lucide-react';
 
 export function Navbar({ 
@@ -14,6 +14,7 @@ export function Navbar({
 }) {
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const workspaceSwitcherRef = useRef(null);
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'User';
   const isAdmin = user?.role === 'admin';
@@ -22,6 +23,26 @@ export function Navbar({
     onNavigate?.(view);
     setMobileMenuOpen(false);
   };
+
+  useEffect(() => {
+    if (!showWorkspaceMenu) return undefined;
+
+    const handlePointerDown = (event) => {
+      if (!workspaceSwitcherRef.current?.contains(event.target)) {
+        setShowWorkspaceMenu(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setShowWorkspaceMenu(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showWorkspaceMenu]);
 
   return (
     <header className="header-nav">
@@ -44,7 +65,7 @@ export function Navbar({
 
           {/* Workspace Switcher & Invite Controls (Desktop) */}
           {user && (
-            <div className="desktop-workspace-switcher" style={{ position: 'relative' }}>
+            <div ref={workspaceSwitcherRef} className="desktop-workspace-switcher" style={{ position: 'relative' }}>
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={() => setShowWorkspaceMenu(!showWorkspaceMenu)}

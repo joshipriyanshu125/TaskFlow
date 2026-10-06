@@ -2,8 +2,10 @@ import { Router } from "express";
 import { Types } from "mongoose";
 import { z } from "zod";
 import { Team } from "../models/Team.js";
+import { Workspace } from "../models/Workspace.js";
 import { WorkspaceMember } from "../models/WorkspaceMember.js";
 import { User } from "../models/User.js";
+import { UserRole } from "../models/UserRole.js";
 import { requireAuth } from "../middleware/auth.js";
 import { sendTeamInvitationEmail } from "../services/email.js";
 
@@ -154,10 +156,6 @@ teamRouter.post("/:id/invite", async (req, res, next) => {
 
     const input = inviteInput.parse(req.body);
 
-    // Check if already a member
-    const existingMember = team.members.find((m) => m.userId?.toString() === req.userId.toString());
-    if (existingMember) return res.status(409).json({ message: "This user is already a member of the team." });
-
     // Check if already invited
     const alreadyInvited = team.invitedEmails?.find((inv) => inv.email === input.email.toLowerCase());
     if (alreadyInvited) return res.status(409).json({ message: "This email has already been invited to the team." });
@@ -165,6 +163,9 @@ teamRouter.post("/:id/invite", async (req, res, next) => {
     // Check if the email belongs to an existing user in the workspace
     const targetUser = await User.findOne({ email: input.email.toLowerCase() });
     if (targetUser) {
+      const existingMember = team.members.find((m) => m.userId?.toString() === targetUser._id.toString());
+      if (existingMember) return res.status(409).json({ message: "This user is already a member of the team." });
+
       // Check if they're already a workspace member
       const wsMember = await WorkspaceMember.findOne({ workspaceId: team.workspaceId, userId: targetUser._id });
       if (wsMember) {
@@ -220,7 +221,7 @@ teamRouter.post("/:id/invite", async (req, res, next) => {
   }
 });
 
-// Remove a member from a team (owner-only)
+// Remove a member from a team (workspace owner/admin)
 teamRouter.delete("/:id/members/:userId", async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid team ID." });
@@ -229,18 +230,29 @@ teamRouter.delete("/:id/members/:userId", async (req, res, next) => {
     const team = await Team.findById(req.params.id);
     if (!team) return res.status(404).json({ message: "Team not found." });
 
-    // Only the workspace owner can remove people from a team
-    const workspaceOwner = await WorkspaceMember.findOne({
-      workspaceId: team.workspaceId,
-      userId: req.userId,
-      role: "owner"
-    });
-    if (!workspaceOwner) return res.status(403).json({ message: "Only the workspace owner can remove team members." });
+    const [workspaceAdmin, workspaceOwner, systemUser, systemRole] = await Promise.all([
+      WorkspaceMember.findOne({
+        workspaceId: team.workspaceId,
+        userId: req.userId,
+        status: "active",
+        role: { $in: ["owner", "admin"] }
+      }).select("_id"),
+      Workspace.exists({ _id: team.workspaceId, ownerId: req.userId }),
+      User.findById(req.userId).select("role"),
+      UserRole.findOne({ userId: req.userId }).select("role")
+    ]);
+    const isSystemAdmin = systemUser?.role === "admin" || systemRole?.role === "admin";
+    if (!workspaceAdmin && !workspaceOwner && !isSystemAdmin) {
+      return res.status(403).json({ message: "Only system admins, workspace owners, or workspace admins can remove team members." });
+    }
 
     const memberIndex = team.members.findIndex((m) => m.userId?.toString() === req.params.userId);
     if (memberIndex === -1) return res.status(404).json({ message: "Member not found in this team." });
 
     team.members.splice(memberIndex, 1);
+    if (team.leadId?.toString() === req.params.userId) {
+      team.leadId = null;
+    }
     await team.save();
 
     const populated = await Team.findById(team._id)
@@ -276,4 +288,3 @@ export async function autoJoinTeams(userId, email) {
     console.warn("[Team Auto-Join] Error:", err.message);
   }
 }
-

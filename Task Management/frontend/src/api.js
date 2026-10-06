@@ -2,18 +2,26 @@
 const envApiUrl = import.meta.env?.VITE_API_URL || '';
 const API_BASE = envApiUrl ? envApiUrl.replace(/\/+$/, '') : '/api';
 
+function normalizeUser(user) {
+  if (!user || typeof user !== 'object') return null;
+  return { ...user, _id: user._id || user.id };
+}
+
 class ApiClient {
   constructor() {
     this.token = localStorage.getItem('taskflow_token') || null;
     this.refreshToken = localStorage.getItem('taskflow_refreshToken') || null;
-    this.user = JSON.parse(localStorage.getItem('taskflow_user') || 'null');
+    this.user = normalizeUser(JSON.parse(localStorage.getItem('taskflow_user') || 'null'));
     this.refreshPromise = null;
+    if (this.user) {
+      localStorage.setItem('taskflow_user', JSON.stringify(this.user));
+    }
   }
 
   setAuth(token, refreshToken, user) {
     this.token = token;
     this.refreshToken = refreshToken;
-    this.user = user;
+    this.user = normalizeUser(user);
     if (token) localStorage.setItem('taskflow_token', token);
     else localStorage.removeItem('taskflow_token');
     if (refreshToken) localStorage.setItem('taskflow_refreshToken', refreshToken);
@@ -130,7 +138,7 @@ class ApiClient {
       body: JSON.stringify(body),
     });
     this.setAuth(data.token, data.refreshToken, data.user);
-    return data;
+    return { ...data, user: this.user };
   }
 
   async signin(email, password) {
@@ -139,7 +147,7 @@ class ApiClient {
       body: JSON.stringify({ email, password }),
     });
     this.setAuth(data.token, data.refreshToken, data.user);
-    return data;
+    return { ...data, user: this.user };
   }
 
   logout() {
@@ -180,8 +188,9 @@ class ApiClient {
   async getMe() {
     const data = await this.request('/auth/me');
     if (data?.user) {
-      this.user = data.user;
-      localStorage.setItem('taskflow_user', JSON.stringify(data.user));
+      this.user = normalizeUser(data.user);
+      localStorage.setItem('taskflow_user', JSON.stringify(this.user));
+      return { ...data, user: this.user };
     }
     return data;
   }
@@ -391,6 +400,10 @@ class ApiClient {
   // Admin Endpoints
   async getAdminStats() {
     return this.request('/admin/stats');
+  }
+
+  async getAdminWorkspaces() {
+    return this.request('/admin/workspaces');
   }
 
   async getAdminUsers(params = {}) {

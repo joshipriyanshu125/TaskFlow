@@ -19,9 +19,11 @@ import { api } from '../api';
 
 export function AdminPanel({ currentUser, onShowToast }) {
   const [stats, setStats] = useState(null);
+  const [workspaces, setWorkspaces] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [workspacesLoading, setWorkspacesLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -64,9 +66,22 @@ export function AdminPanel({ currentUser, onShowToast }) {
     }
   }, [page, searchQuery, onShowToast]);
 
+  const fetchWorkspaces = useCallback(async () => {
+    setWorkspacesLoading(true);
+    try {
+      const res = await api.getAdminWorkspaces();
+      setWorkspaces(Array.isArray(res?.workspaces) ? res.workspaces : []);
+    } catch (err) {
+      onShowToast?.(err.message || 'Failed to fetch workspaces.', 'error');
+    } finally {
+      setWorkspacesLoading(false);
+    }
+  }, [onShowToast]);
+
   useEffect(() => {
     fetchStats();
     fetchUsers(1, '');
+    fetchWorkspaces();
   }, []);
 
   const handleSearchSubmit = (e) => {
@@ -156,6 +171,7 @@ export function AdminPanel({ currentUser, onShowToast }) {
           onClick={() => {
             fetchStats();
             fetchUsers(page, searchQuery);
+            fetchWorkspaces();
           }}
           style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', borderRadius: '100px', padding: '0.5rem 1rem' }}
           title="Refresh stats and users"
@@ -280,6 +296,45 @@ export function AdminPanel({ currentUser, onShowToast }) {
           </div>
         </div>
       </div>
+
+      <section style={{
+        background: '#FFFFFF',
+        border: '1px solid rgba(87, 83, 78, 0.12)',
+        borderRadius: '20px',
+        padding: '1.5rem',
+        boxShadow: 'var(--shadow-card)',
+        marginBottom: '1.5rem'
+      }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Workspaces ({workspaces.length})
+          </h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            All workspaces and their creators.
+          </p>
+        </div>
+        {workspacesLoading ? (
+          <p style={{ color: 'var(--text-secondary)' }}>Loading workspaces...</p>
+        ) : workspaces.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)' }}>No workspaces found.</p>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.75rem' }}>
+            {workspaces.map((workspace) => (
+              <div key={workspace._id} style={{
+                padding: '0.9rem 1rem',
+                border: '1px solid rgba(87, 83, 78, 0.12)',
+                borderRadius: '12px',
+                background: '#FAF8F5'
+              }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{workspace.name}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.3rem' }}>
+                  Created by {workspace.ownerId?.name || 'Unknown owner'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* User Management Section */}
       <div style={{
