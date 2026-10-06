@@ -73,6 +73,14 @@ app.use("/api", apiLimiter);
 app.use("/api/auth", authLimiter);
 
 // Dynamic Health Check
+app.get("/", (_req, res) => {
+  return res.json({
+    name: "TaskFlow API",
+    status: "ok",
+    health: "/health"
+  });
+});
+
 app.get("/health", (_req, res) => {
   const dbStatus = mongoose.connection.readyState === 1 ? "connected" : "disconnected";
   const redisStatus = cache.isRedisReady ? "connected" : "in-memory fallback";

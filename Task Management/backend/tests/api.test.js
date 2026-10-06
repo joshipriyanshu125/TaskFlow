@@ -15,6 +15,13 @@ async function request(path, options = {}) {
 }
 
 describe("Health Check", () => {
+  it("should return API information at the root URL", async () => {
+    const { status, body } = await request("/");
+    assert.equal(status, 200);
+    assert.equal(body.name, "TaskFlow API");
+    assert.equal(body.health, "/health");
+  });
+
   it("should return ok status with service details", async () => {
     const { status, body } = await request("/health");
     assert.equal(status, 200);

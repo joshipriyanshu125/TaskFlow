@@ -17,7 +17,7 @@ An Express and MongoDB API for a private task-management app. Every task is owne
 3. Install dependencies: `npm install`.
 4. Start development server: `npm run dev`.
 
-The health endpoint is available at `GET /health`. The API runs on `http://localhost:5000` by default.
+The root endpoint (`GET /`) returns API information and points to the health check at `GET /health`. The API runs on `http://localhost:5000` by default.
 
 ## API summary
 
