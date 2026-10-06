@@ -28,6 +28,7 @@ import { initSocketServer } from "./services/socket.js";
 import "./services/pubsub.js"; // Initialize Redis Pub/Sub subscriber
 
 const app = express();
+app.set("trust proxy", 1);
 const server = http.createServer(app);
 
 // Initialize Real-time WebSockets
