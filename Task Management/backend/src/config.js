@@ -1,20 +1,43 @@
 import "dotenv/config";
 
+const productionClientOrigin = "https://taskflow-frontend-two-ecru.vercel.app";
+const nodeEnv = process.env.NODE_ENV || "development";
+const normalizeOrigin = (value) => {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+
+  try {
+    return new URL(trimmed).origin;
+  } catch {
+    return trimmed.replace(/\/+$/, "");
+  }
+};
+const configuredClientOrigin = normalizeOrigin(process.env.CLIENT_ORIGIN);
+const isLocalOrigin = (value) => {
+  try {
+    return ["localhost", "127.0.0.1", "::1"].includes(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+};
+
 export const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5000,
   mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/Task_management",
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  clientOrigin: (process.env.CLIENT_ORIGIN || (
-    process.env.NODE_ENV === "production"
-      ? "https://taskflow-frontend-two-ecru.vercel.app"
-      : "http://localhost:5173"
-  )).trim().replace(/\/+$/, ""),
-  corsOrigins: (process.env.CORS_ORIGINS || "")
-    .split(",")
-    .map((origin) => origin.trim().replace(/\/+$/, ""))
-    .filter(Boolean),
-  nodeEnv: process.env.NODE_ENV || "development",
+  clientOrigin: nodeEnv === "production" &&
+    (!configuredClientOrigin || isLocalOrigin(configuredClientOrigin))
+      ? productionClientOrigin
+      : configuredClientOrigin || "http://localhost:5173",
+  corsOrigins: [
+    ...(process.env.CORS_ORIGINS || "")
+      .split(",")
+      .map(normalizeOrigin)
+      .filter(Boolean),
+    ...(nodeEnv === "production" ? [productionClientOrigin] : [])
+  ],
+  nodeEnv,
 
   redisUrl: process.env.REDIS_URL,
 

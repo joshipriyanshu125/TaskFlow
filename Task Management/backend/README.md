@@ -31,9 +31,9 @@ Never commit API keys or add them to source code.
 
 ## Frontend deployment settings
 
-For the current Vercel deployment, set the Render backend environment variable `CLIENT_ORIGIN` to `https://taskflow-frontend-two-ecru.vercel.app`. This URL is used for password-reset and workspace-invitation links. The same origin is allowed by the backend CORS policy by default in production.
+For the current Vercel deployment, set the Render backend environment variable `CLIENT_ORIGIN` to `https://taskflow-frontend-two-ecru.vercel.app`. This URL is used for password-reset and workspace-invitation links. The same origin is allowed by the backend CORS policy by default in production. If Render still has `CLIENT_ORIGIN` set to localhost, production ignores that local value and uses the Vercel origin instead.
 
-If the frontend has additional production domains or Vercel preview domains, add their exact origins as a comma-separated `CORS_ORIGINS` value in Render. Do not include paths; for example: `https://app.example.com,https://preview.example.com`.
+If the frontend has additional production domains or Vercel preview domains, add their exact origins as a comma-separated `CORS_ORIGINS` value in Render. Paths are normalized away; for example: `https://app.example.com,https://preview.example.com`.
 
 ## API summary
 
