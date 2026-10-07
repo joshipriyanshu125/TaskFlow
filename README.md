@@ -218,7 +218,7 @@ https://taskflow-odak.onrender.com/
 
 ### 📦 GitHub Repository
 
-https://github.com/joshipriy... 
+https://github.com/joshipriyanshu125/TaskFlow.git
 
 ### 🆔 Internship Portal
 
