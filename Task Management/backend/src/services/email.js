@@ -31,6 +31,9 @@ if (!config.resendApiKey && gmailUser && gmailPass) {
       port: config.smtp.port || 465,
       secure: config.smtp.port === 465,
       family: 4, // Force IPv4 to avoid ENETUNREACH on hosts without IPv6 routing
+      lookup: (hostname, options, callback) => {
+        return dns.lookup(hostname, { ...options, family: 4, all: false }, callback);
+      },
       connectionTimeout: 8000,
       greetingTimeout: 8000,
       socketTimeout: 10000,
@@ -41,7 +44,7 @@ if (!config.resendApiKey && gmailUser && gmailPass) {
     });
     console.log("[Email] Gmail transporter initialized successfully (IPv4 enforced)");
   } catch (error) {
-    console.error("[Email] Failed to initialize SMTP transporter:", error.message);
+    console.warn("[Email] Failed to initialize SMTP transporter:", error.message);
   }
 }
 
@@ -107,11 +110,12 @@ export async function sendEmail({ to, subject, html, text }) {
     console.log(`[Email] Sent to ${to}: ${info.messageId}`);
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error(`[Email] Failed to send to ${to}:`, error.message);
-
-    // Handle Gmail-specific authentication errors
-    if (error.code === 'EAUTH') {
+    if (error.code === 'ENETUNREACH' || error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+      console.warn(`[Email] Notice: Outbound SMTP to ${to} was restricted by host (${error.code}). Render free tier blocks outbound SMTP (ports 465/587). Emails can be sent via RESEND_API_KEY.`);
+    } else if (error.code === 'EAUTH') {
       console.error("[Email] Authentication failed - check Gmail app password settings");
+    } else {
+      console.warn(`[Email] Failed to send to ${to}:`, error.message);
     }
 
     return { success: false, error: error.message };

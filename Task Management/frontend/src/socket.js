@@ -95,3 +95,17 @@ export function leaveWorkspaceRoom(workspaceId) {
     s.emit('leave:workspace', workspaceId);
   }
 }
+
+export function joinTeamRoom(teamId) {
+  const s = getSocket();
+  if (s && teamId) {
+    s.emit('join:team', teamId);
+  }
+}
+
+export function leaveTeamRoom(teamId) {
+  const s = getSocket();
+  if (s && teamId) {
+    s.emit('leave:team', teamId);
+  }
+}

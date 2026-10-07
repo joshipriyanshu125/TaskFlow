@@ -1,3 +1,8 @@
+import dns from "node:dns";
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
+
 import http from "http";
 import path from "path";
 import cors from "cors";

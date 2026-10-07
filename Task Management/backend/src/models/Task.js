@@ -7,6 +7,7 @@ const taskSchema = new Schema(
   {
     workspaceId: { type: Schema.Types.ObjectId, ref: "Workspace", index: true },
     projectId: { type: Schema.Types.ObjectId, ref: "Project", index: true },
+    teamId: { type: Schema.Types.ObjectId, ref: "Team", index: true },
     ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     assigneeId: { type: Schema.Types.ObjectId, ref: "User", index: true },
     title: { type: String, required: true, trim: true, maxlength: 140 },
@@ -39,7 +40,8 @@ taskSchema.index({ ownerId: 1, priority: 1 });
 taskSchema.index({ ownerId: 1, category: 1 });
 taskSchema.index({ ownerId: 1, dueDate: 1 });
 taskSchema.index({ projectId: 1, status: 1, position: 1 });
-taskSchema.index({ workspaceId: 1, status: 1 });
+taskSchema.index({ workspaceId: 1, status: 1, position: 1 });
+taskSchema.index({ teamId: 1, status: 1, position: 1 });
 taskSchema.index({ title: "text", description: "text", category: "text" });
 
 export const Task = model("Task", taskSchema);

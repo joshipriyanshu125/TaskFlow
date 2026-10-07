@@ -27,7 +27,7 @@ class AppEventBus extends EventEmitter {
     this.on("task:created", async ({ task, userId }) => {
       try {
         // 1. Real-time Pub/Sub broadcast
-        await publishRealtimeEvent("task:created", { task, userId, projectId: task.projectId, workspaceId: task.workspaceId });
+        await publishRealtimeEvent("task:created", { task, userId, projectId: task.projectId, workspaceId: task.workspaceId, teamId: task.teamId });
 
         // 2. Push/In-app notification if assigned to someone else
         if (task.assigneeId && task.assigneeId.toString() !== userId.toString()) {
@@ -52,7 +52,7 @@ class AppEventBus extends EventEmitter {
     this.on("task:updated", async ({ task, userId, changes }) => {
       try {
         // 1. Real-time Pub/Sub broadcast
-        await publishRealtimeEvent("task:updated", { task, userId, changes, projectId: task.projectId, workspaceId: task.workspaceId });
+        await publishRealtimeEvent("task:updated", { task, userId, changes, projectId: task.projectId, workspaceId: task.workspaceId, teamId: task.teamId });
 
         // 2. Notifications
         if (changes.assigneeId && changes.assigneeId.toString() !== userId.toString()) {

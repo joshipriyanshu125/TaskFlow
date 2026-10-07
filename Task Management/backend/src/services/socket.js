@@ -60,6 +60,19 @@ export function initSocketServer(httpServer) {
         socket.leave(`workspace:${workspaceId}`);
       }
     });
+
+    // Join / Leave team rooms
+    socket.on("join:team", (teamId) => {
+      if (teamId) {
+        socket.join(`team:${teamId}`);
+      }
+    });
+
+    socket.on("leave:team", (teamId) => {
+      if (teamId) {
+        socket.leave(`team:${teamId}`);
+      }
+    });
   });
 
   console.log("Socket.IO server initialized for real-time collaboration");
@@ -74,9 +87,10 @@ export function initSocketServer(httpServer) {
 export function broadcastSocketEvent(event, payload = {}) {
   if (!io) return;
 
-  const { projectId, workspaceId, recipientId, userId, task } = payload;
+  const { projectId, workspaceId, teamId, recipientId, userId, task } = payload;
   const pId = projectId || task?.projectId;
   const wId = workspaceId || task?.workspaceId;
+  const tId = teamId || task?.teamId;
   const targetUserId = recipientId || userId || task?.ownerId || task?.assigneeId;
 
   let targeted = false;
@@ -84,6 +98,12 @@ export function broadcastSocketEvent(event, payload = {}) {
   // Emit to workspace room
   if (wId) {
     io.to(`workspace:${wId}`).emit(event, payload);
+    targeted = true;
+  }
+
+  // Emit to team room
+  if (tId) {
+    io.to(`team:${tId}`).emit(event, payload);
     targeted = true;
   }
 

@@ -3,6 +3,9 @@ import { Types } from "mongoose";
 import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { Task, taskPriorities, taskStatuses } from "../models/Task.js";
+import { Workspace } from "../models/Workspace.js";
+import { WorkspaceMember } from "../models/WorkspaceMember.js";
+import { Team } from "../models/Team.js";
 import { Comment } from "../models/Comment.js";
 import { Attachment } from "../models/Attachment.js";
 import { Activity } from "../models/Activity.js";
@@ -17,6 +20,61 @@ const safeObjectId = z
     return Types.ObjectId.isValid(val.trim()) ? val.trim() : undefined;
   });
 
+// Retrieve all workspaces user is an active member or owner of
+async function getUserWorkspaceIds(userId) {
+  const [memberships, owned] = await Promise.all([
+    WorkspaceMember.find({ userId, status: "active" }).select("workspaceId"),
+    Workspace.find({ ownerId: userId }).select("_id")
+  ]);
+  return [
+    ...new Set([
+      ...memberships.map((m) => m.workspaceId.toString()),
+      ...owned.map((w) => w._id.toString())
+    ])
+  ];
+}
+
+// Retrieve all teams user is a member or lead of
+async function getUserTeamIds(userId) {
+  const teams = await Team.find({
+    $or: [{ "members.userId": userId }, { leadId: userId }]
+  }).select("_id");
+  return teams.map((t) => t._id.toString());
+}
+
+// Verify if user can access a specific task (owner, assignee, workspace member, or team member)
+async function canUserAccessTask(task, userId) {
+  if (!task) return false;
+  const uId = userId.toString();
+  if (task.ownerId && task.ownerId.toString() === uId) return true;
+  if (task.assigneeId && task.assigneeId.toString() === uId) return true;
+
+  if (task.workspaceId) {
+    const isMember = await WorkspaceMember.exists({
+      workspaceId: task.workspaceId,
+      userId,
+      status: "active"
+    });
+    if (isMember) return true;
+
+    const isOwner = await Workspace.exists({
+      _id: task.workspaceId,
+      ownerId: userId
+    });
+    if (isOwner) return true;
+  }
+
+  if (task.teamId) {
+    const inTeam = await Team.exists({
+      _id: task.teamId,
+      $or: [{ "members.userId": userId }, { leadId: userId }]
+    });
+    if (inTeam) return true;
+  }
+
+  return false;
+}
+
 const taskInput = z.object({
   title: z.string().trim().min(1, "Title is required").max(140),
   description: z.union([z.string(), z.null()]).optional().transform((v) => v?.trim() || ""),
@@ -26,6 +84,7 @@ const taskInput = z.object({
   status: z.enum(taskStatuses).optional(),
   workspaceId: safeObjectId,
   projectId: safeObjectId,
+  teamId: safeObjectId,
   assigneeId: safeObjectId,
   labels: z.array(z.string().refine(Types.ObjectId.isValid)).optional(),
   tags: z.array(z.string()).optional()
@@ -36,9 +95,10 @@ const taskQuery = z.object({
   priority: z.enum(taskPriorities).optional(),
   category: z.string().trim().min(1).max(50).optional(),
   search: z.string().trim().optional(),
-  workspaceId: z.string().refine(Types.ObjectId.isValid).optional(),
-  projectId: z.string().refine(Types.ObjectId.isValid).optional(),
-  assigneeId: z.string().refine(Types.ObjectId.isValid).optional(),
+  workspaceId: safeObjectId,
+  projectId: safeObjectId,
+  teamId: safeObjectId,
+  assigneeId: safeObjectId,
   dueFrom: dateValue.optional(),
   dueTo: dateValue.optional(),
   page: z.coerce.number().int().min(1).optional(),
@@ -54,15 +114,56 @@ taskRouter.use(requireAuth);
 taskRouter.get("/", async (req, res, next) => {
   try {
     const query = taskQuery.parse(req.query);
-    const filter = {
-      $or: [{ ownerId: req.userId }, { assigneeId: req.userId }]
-    };
+    const filter = {};
+
+    if (query.workspaceId) {
+      // User is requesting tasks in a specific workspace
+      const [isMember, isOwner] = await Promise.all([
+        WorkspaceMember.exists({ workspaceId: query.workspaceId, userId: req.userId, status: "active" }),
+        Workspace.exists({ _id: query.workspaceId, ownerId: req.userId })
+      ]);
+
+      filter.workspaceId = query.workspaceId;
+
+      if (!isMember && !isOwner) {
+        // Not a member/owner: restrict to tasks they own or are assigned to
+        filter.$or = [{ ownerId: req.userId }, { assigneeId: req.userId }];
+      }
+      // Workspace members/owners can see all tasks in this workspace!
+    } else if (query.teamId) {
+      filter.teamId = query.teamId;
+      const inTeam = await Team.exists({
+        _id: query.teamId,
+        $or: [{ "members.userId": req.userId }, { leadId: req.userId }]
+      });
+      if (!inTeam) {
+        filter.$or = [{ ownerId: req.userId }, { assigneeId: req.userId }];
+      }
+    } else {
+      // Unscoped query: return all tasks across workspaces & teams user belongs to + personal tasks
+      const [myWorkspaceIds, myTeamIds] = await Promise.all([
+        getUserWorkspaceIds(req.userId),
+        getUserTeamIds(req.userId)
+      ]);
+
+      const accessConditions = [
+        { ownerId: req.userId },
+        { assigneeId: req.userId }
+      ];
+      if (myWorkspaceIds.length > 0) {
+        accessConditions.push({ workspaceId: { $in: myWorkspaceIds } });
+      }
+      if (myTeamIds.length > 0) {
+        accessConditions.push({ teamId: { $in: myTeamIds } });
+      }
+      filter.$or = accessConditions;
+    }
 
     if (query.status) filter.status = query.status;
     if (query.priority) filter.priority = query.priority;
     if (query.category) filter.category = query.category;
-    if (query.workspaceId) filter.workspaceId = query.workspaceId;
     if (query.projectId) filter.projectId = query.projectId;
+    if (query.teamId && query.workspaceId) filter.teamId = query.teamId;
     if (query.assigneeId) filter.assigneeId = query.assigneeId;
 
     if (query.search) {
@@ -112,7 +213,17 @@ taskRouter.post("/", async (req, res, next) => {
   try {
     const input = taskInput.parse(req.body);
     const status = input.status || "todo";
-    const last = await Task.findOne({ ownerId: req.userId, status }).sort({ position: -1 }).select("position");
+
+    const positionFilter = { status };
+    if (input.workspaceId) {
+      positionFilter.workspaceId = input.workspaceId;
+    } else if (input.teamId) {
+      positionFilter.teamId = input.teamId;
+    } else {
+      positionFilter.ownerId = req.userId;
+    }
+
+    const last = await Task.findOne(positionFilter).sort({ position: -1 }).select("position");
 
     const task = await Task.create({
       ...input,
@@ -149,16 +260,20 @@ taskRouter.patch("/reorder", async (req, res, next) => {
             })
           )
           .min(1),
-        workspaceId: z.string().refine(Types.ObjectId.isValid).optional()
+        workspaceId: safeObjectId
       })
       .parse(req.body);
 
     const taskIds = tasks.map((task) => task.id);
-    const existing = await Task.find({
-      _id: { $in: taskIds },
-      $or: [{ ownerId: req.userId }, { assigneeId: req.userId }]
-    });
+    let reorderFilter = { _id: { $in: taskIds } };
 
+    if (workspaceId) {
+      reorderFilter.workspaceId = workspaceId;
+    } else {
+      reorderFilter.$or = [{ ownerId: req.userId }, { assigneeId: req.userId }];
+    }
+
+    const existing = await Task.find(reorderFilter);
     if (existing.length === 0) {
       return res.status(404).json({ message: "No matching tasks found to reorder." });
     }
@@ -169,8 +284,8 @@ taskRouter.patch("/reorder", async (req, res, next) => {
       tasks.map((task) => ({
         updateOne: {
           filter: { 
-            _id: task.id, 
-            $or: [{ ownerId: req.userId }, { assigneeId: req.userId }] 
+            _id: task.id,
+            ...(detectedWorkspaceId ? { workspaceId: detectedWorkspaceId } : { $or: [{ ownerId: req.userId }, { assigneeId: req.userId }] })
           },
           update: {
             $set: {
@@ -198,12 +313,16 @@ taskRouter.patch("/reorder", async (req, res, next) => {
 taskRouter.get("/:id", async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid task ID." });
-    const task = await Task.findOne({
-      _id: req.params.id,
-      $or: [{ ownerId: req.userId }, { assigneeId: req.userId }]
-    }).populate("ownerId", "name email avatarUrl").populate("assigneeId", "name email avatarUrl").populate("labels");
+    const task = await Task.findById(req.params.id)
+      .populate("ownerId", "name email avatarUrl")
+      .populate("assigneeId", "name email avatarUrl")
+      .populate("labels");
 
     if (!task) return res.status(404).json({ message: "Task not found." });
+
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have permission to view this task." });
+
     return res.json({ task });
   } catch (error) {
     return next(error);
@@ -216,16 +335,14 @@ taskRouter.patch("/:id", async (req, res, next) => {
     if (!Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid task ID." });
     const updates = taskInput.partial().parse(req.body);
 
-    const task = await Task.findOneAndUpdate(
-      {
-        _id: req.params.id,
-        $or: [{ ownerId: req.userId }, { assigneeId: req.userId }]
-      },
-      { $set: updates },
-      { new: true, runValidators: true }
-    );
-
+    const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
+
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have permission to update this task." });
+
+    Object.assign(task, updates);
+    await task.save();
 
     await Activity.create({
       taskId: task._id,
@@ -242,16 +359,31 @@ taskRouter.patch("/:id", async (req, res, next) => {
   }
 });
 
-// 6. DELETE /api/tasks/:id (Delete task - owner only)
+// 6. DELETE /api/tasks/:id (Delete task - owner, workspace admin, or team lead)
 taskRouter.delete("/:id", async (req, res, next) => {
   try {
     if (!Types.ObjectId.isValid(req.params.id)) return res.status(400).json({ message: "Invalid task ID." });
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
 
-    // Only the owner can delete tasks
-    if (task.ownerId.toString() !== req.userId.toString()) {
-      return res.status(403).json({ message: "Only the task owner can delete this task." });
+    let canDelete = task.ownerId.toString() === req.userId.toString();
+    if (!canDelete && task.workspaceId) {
+      const isWsAdmin = await WorkspaceMember.exists({
+        workspaceId: task.workspaceId,
+        userId: req.userId,
+        role: { $in: ["owner", "admin"] },
+        status: "active"
+      });
+      const isWsOwner = await Workspace.exists({ _id: task.workspaceId, ownerId: req.userId });
+      canDelete = Boolean(isWsAdmin || isWsOwner);
+    }
+    if (!canDelete && task.teamId) {
+      const isLead = await Team.exists({ _id: task.teamId, leadId: req.userId });
+      canDelete = Boolean(isLead);
+    }
+
+    if (!canDelete) {
+      return res.status(403).json({ message: "Only the task owner or workspace admin can delete this task." });
     }
 
     await Task.findByIdAndDelete(req.params.id);
@@ -266,6 +398,7 @@ taskRouter.delete("/:id", async (req, res, next) => {
       taskId: task._id,
       projectId: task.projectId,
       workspaceId: task.workspaceId,
+      teamId: task.teamId,
       userId: req.userId
     });
 
@@ -287,6 +420,8 @@ taskRouter.post("/:id/subtasks", async (req, res, next) => {
 
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have access to this task." });
 
     task.subtasks.push({ title, dueDate: dueDate || null, assigneeId: assigneeId || undefined, isCompleted: false });
     await task.save();
@@ -302,6 +437,8 @@ taskRouter.patch("/:id/subtasks/:subtaskId", async (req, res, next) => {
     const { isCompleted, title } = z.object({ isCompleted: z.boolean().optional(), title: z.string().trim().min(1).optional() }).parse(req.body);
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have access to this task." });
 
     const subtask = task.subtasks.id(req.params.subtaskId);
     if (!subtask) return res.status(404).json({ message: "Subtask not found." });
@@ -320,6 +457,8 @@ taskRouter.delete("/:id/subtasks/:subtaskId", async (req, res, next) => {
   try {
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have access to this task." });
 
     task.subtasks.pull({ _id: req.params.subtaskId });
     await task.save();
@@ -345,6 +484,8 @@ taskRouter.post("/:id/comments", async (req, res, next) => {
     const { content } = z.object({ content: z.string().trim().min(1).max(5000) }).parse(req.body);
     const task = await Task.findById(req.params.id);
     if (!task) return res.status(404).json({ message: "Task not found." });
+    const hasAccess = await canUserAccessTask(task, req.userId);
+    if (!hasAccess) return res.status(403).json({ message: "You do not have access to this task." });
 
     const comment = await Comment.create({
       taskId: req.params.id,

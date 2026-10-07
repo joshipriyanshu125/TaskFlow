@@ -25,12 +25,13 @@ const CATEGORIES = [
   'Meetings'
 ];
 
-export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWorkspace, defaultDate }) {
+export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWorkspace, defaultDate, teams = [] }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('todo');
   const [priority, setPriority] = useState('medium');
   const [category, setCategory] = useState('General');
+  const [teamId, setTeamId] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
   const [workspaceMembers, setWorkspaceMembers] = useState([]);
   const [tags, setTags] = useState([]);
@@ -58,6 +59,7 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
       setStatus(task.status || 'todo');
       setPriority(task.priority || 'medium');
       setCategory(task.category || 'General');
+      setTeamId(task.teamId?._id || task.teamId || '');
       setAssigneeId(task.assigneeId?._id || task.assigneeId || '');
       setTags(task.tags || (task.labels?.map(l => l.name || l)) || []);
       setDueDate(task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '');
@@ -67,6 +69,7 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
       setStatus('todo');
       setPriority('medium');
       setCategory('General');
+      setTeamId('');
       setAssigneeId('');
       setTags([]);
       setTagInput('');
@@ -103,6 +106,7 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
     setLoading(true);
     const cleanAssignee = assigneeId && assigneeId !== 'all' && /^[0-9a-fA-F]{24}$/.test(assigneeId) ? assigneeId : undefined;
     const cleanWorkspaceId = currentWorkspace?._id && /^[0-9a-fA-F]{24}$/.test(currentWorkspace._id) ? currentWorkspace._id : undefined;
+    const cleanTeamId = teamId && /^[0-9a-fA-F]{24}$/.test(teamId) ? teamId : undefined;
 
     const taskPayload = {
       title: title.trim(),
@@ -111,6 +115,7 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
       priority,
       category,
       ...(cleanAssignee ? { assigneeId: cleanAssignee } : {}),
+      ...(cleanTeamId ? { teamId: cleanTeamId } : {}),
       tags,
       dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       ...(cleanWorkspaceId ? { workspaceId: cleanWorkspaceId } : {})
@@ -488,6 +493,34 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
               </div>
             )}
           </div>
+
+          {/* Team Row (when workspace has teams) */}
+          {teams && teams.length > 0 && (
+            <div className="form-group" style={{ marginBottom: '1.25rem' }}>
+              <label className="form-label" style={{ fontWeight: 600, fontSize: '0.9rem', marginBottom: '0.4rem' }}>
+                Team (Optional)
+              </label>
+              <select
+                className="form-select"
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                style={{
+                  borderRadius: '12px',
+                  padding: '0.7rem 1rem',
+                  backgroundColor: '#FAF8F5',
+                  border: '1px solid rgba(87, 83, 78, 0.15)',
+                  fontSize: '0.925rem'
+                }}
+              >
+                <option value="">Whole Workspace (All Members)</option>
+                {teams.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Tags */}
           <div className="form-group" style={{ marginBottom: '1.25rem' }}>

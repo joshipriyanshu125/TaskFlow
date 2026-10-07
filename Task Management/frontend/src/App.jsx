@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from './api';
-import { getSocket, joinWorkspaceRoom, leaveWorkspaceRoom, updateSocketAuth } from './socket';
+import { getSocket, joinWorkspaceRoom, leaveWorkspaceRoom, joinTeamRoom, leaveTeamRoom, updateSocketAuth } from './socket';
 import { Navbar } from './components/Navbar';
 import { LandingPage } from './components/LandingPage';
 import { Dashboard } from './components/Dashboard';
@@ -248,6 +248,12 @@ export function App() {
       joinWorkspaceRoom(currentWorkspace._id);
     }
 
+    if (Array.isArray(teams)) {
+      teams.forEach((t) => {
+        if (t._id) joinTeamRoom(t._id);
+      });
+    }
+
     const handleTaskUpdated = (payload) => {
       const updatedTask = payload.task;
       if (!updatedTask) return;
@@ -317,6 +323,11 @@ export function App() {
       if (currentWorkspace?._id) {
         leaveWorkspaceRoom(currentWorkspace._id);
       }
+      if (Array.isArray(teams)) {
+        teams.forEach((t) => {
+          if (t._id) leaveTeamRoom(t._id);
+        });
+      }
       socket.off('task:updated', handleTaskUpdated);
       socket.off('task:created', handleTaskCreated);
       socket.off('task:deleted', handleTaskDeleted);
@@ -325,7 +336,7 @@ export function App() {
       socket.off('team:updated', handleTeamUpdated);
       socket.off('team:deleted', handleTeamDeleted);
     };
-  }, [user?._id, currentWorkspace?._id, fetchTasks]);
+  }, [user?._id, currentWorkspace?._id, teams, fetchTasks]);
 
   // Auth Handlers
   const handleAuthSuccess = (authenticatedUser) => {
@@ -534,6 +545,7 @@ export function App() {
           onSave={handleSaveTask}
           workspaces={workspaces}
           currentWorkspace={currentWorkspace}
+          teams={teams}
         />
       )}
 
