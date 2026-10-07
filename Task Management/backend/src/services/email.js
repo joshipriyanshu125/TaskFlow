@@ -1,5 +1,11 @@
+import dns from "node:dns";
 import nodemailer from "nodemailer";
 import { config } from "../config.js";
+
+// Force IPv4 address resolution first to prevent ENETUNREACH errors on cloud hosts like Render
+if (typeof dns.setDefaultResultOrder === "function") {
+  dns.setDefaultResultOrder("ipv4first");
+}
 
 const gmailUser = config.smtp.user;
 const gmailPass = config.smtp.pass;
@@ -21,15 +27,19 @@ let transporter = null;
 if (!config.resendApiKey && gmailUser && gmailPass) {
   try {
     transporter = nodemailer.createTransport({
-      host: config.smtp.host,
-      port: config.smtp.port,
+      host: config.smtp.host || "smtp.gmail.com",
+      port: config.smtp.port || 465,
       secure: config.smtp.port === 465,
+      family: 4, // Force IPv4 to avoid ENETUNREACH on hosts without IPv6 routing
+      connectionTimeout: 8000,
+      greetingTimeout: 8000,
+      socketTimeout: 10000,
       auth: {
         user: gmailUser,
         pass: gmailPass,
       },
     });
-    console.log("[Email] Gmail transporter initialized successfully");
+    console.log("[Email] Gmail transporter initialized successfully (IPv4 enforced)");
   } catch (error) {
     console.error("[Email] Failed to initialize SMTP transporter:", error.message);
   }

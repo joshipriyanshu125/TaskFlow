@@ -101,16 +101,19 @@ export function TaskModal({ task, isOpen, onClose, onSave, workspaces, currentWo
     if (!title.trim() || loading) return;
 
     setLoading(true);
+    const cleanAssignee = assigneeId && assigneeId !== 'all' && /^[0-9a-fA-F]{24}$/.test(assigneeId) ? assigneeId : undefined;
+    const cleanWorkspaceId = currentWorkspace?._id && /^[0-9a-fA-F]{24}$/.test(currentWorkspace._id) ? currentWorkspace._id : undefined;
+
     const taskPayload = {
       title: title.trim(),
       description: description.trim() || undefined,
       status,
       priority,
       category,
-      assigneeId: assigneeId === 'all' ? 'all' : (assigneeId || undefined),
+      ...(cleanAssignee ? { assigneeId: cleanAssignee } : {}),
       tags,
       dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-      workspaceId: currentWorkspace?._id || undefined
+      ...(cleanWorkspaceId ? { workspaceId: cleanWorkspaceId } : {})
     };
 
     try {

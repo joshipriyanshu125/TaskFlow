@@ -102,12 +102,9 @@ export function initScheduler() {
   });
 
   // 3. Daily Task Email Summary (Runs every morning at 8:00 AM)
-  // Only sends if an email domain is configured
-  cron.schedule("0 8 * * *", async () => {
-    if (!config.emailDomain) {
-      console.log("[Scheduler] Email domain not configured — skipping daily task email.");
-      return;
-    }
+  // Only runs if email domain or sender is configured
+  if (config.emailDomain) {
+    cron.schedule("0 8 * * *", async () => {
 
     try {
       console.log("[Scheduler] Running daily task email job...");
@@ -145,7 +142,8 @@ export function initScheduler() {
     } catch (error) {
       console.error("[Scheduler Error] Daily task email job failed:", error.message);
     }
-  });
+    });
+  }
 
   console.log("Background Scheduler initialized (Task Reminders, Recurring Tasks & Daily Email Summary active)");
 }

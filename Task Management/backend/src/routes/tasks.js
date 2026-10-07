@@ -9,17 +9,26 @@ import { Activity } from "../models/Activity.js";
 import { eventBus } from "../services/events.js";
 
 const dateValue = z.coerce.date();
+const safeObjectId = z
+  .union([z.string(), z.null(), z.undefined()])
+  .optional()
+  .transform((val) => {
+    if (!val || typeof val !== "string" || !val.trim() || val === "all") return undefined;
+    return Types.ObjectId.isValid(val.trim()) ? val.trim() : undefined;
+  });
+
 const taskInput = z.object({
-  title: z.string().trim().min(1).max(140),
-  description: z.string().trim().max(4000).optional(),
+  title: z.string().trim().min(1, "Title is required").max(140),
+  description: z.union([z.string(), z.null()]).optional().transform((v) => v?.trim() || ""),
   dueDate: dateValue.nullable().optional(),
   priority: z.enum(taskPriorities).optional(),
   category: z.string().trim().min(1).max(50).optional(),
   status: z.enum(taskStatuses).optional(),
-  workspaceId: z.string().refine(Types.ObjectId.isValid).optional(),
-  projectId: z.string().refine(Types.ObjectId.isValid).optional(),
-  assigneeId: z.string().refine(Types.ObjectId.isValid).optional(),
-  labels: z.array(z.string().refine(Types.ObjectId.isValid)).optional()
+  workspaceId: safeObjectId,
+  projectId: safeObjectId,
+  assigneeId: safeObjectId,
+  labels: z.array(z.string().refine(Types.ObjectId.isValid)).optional(),
+  tags: z.array(z.string()).optional()
 });
 
 const taskQuery = z.object({

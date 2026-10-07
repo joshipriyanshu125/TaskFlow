@@ -414,7 +414,9 @@ export function App() {
       try {
         const payloadWithWorkspace = {
           ...taskPayload,
-          ...(currentWorkspace?._id ? { workspaceId: currentWorkspace._id } : {})
+          ...(currentWorkspace?._id && /^[0-9a-fA-F]{24}$/.test(currentWorkspace._id)
+            ? { workspaceId: currentWorkspace._id }
+            : {})
         };
         const res = await api.createTask(payloadWithWorkspace);
         const created = res?.task || payloadWithWorkspace;
@@ -422,7 +424,7 @@ export function App() {
         showToast('Task created! 🚀');
       } catch (err) {
         console.warn('Task create error:', err);
-        showToast('Failed to create task.', 'error');
+        showToast(err?.message || 'Failed to create task.', 'error');
       }
     }
   };
