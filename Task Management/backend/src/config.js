@@ -12,24 +12,15 @@ const normalizeOrigin = (value) => {
     return trimmed.replace(/\/+$/, "");
   }
 };
-const configuredClientOrigin = normalizeOrigin(process.env.CLIENT_ORIGIN);
-const isLocalOrigin = (value) => {
-  try {
-    return ["localhost", "127.0.0.1", "::1"].includes(new URL(value).hostname);
-  } catch {
-    return false;
-  }
-};
 
 export const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5000,
   mongoUri: process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/Task_management",
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  clientOrigin: nodeEnv === "production" &&
-    (!configuredClientOrigin || isLocalOrigin(configuredClientOrigin))
-      ? productionClientOrigin
-      : configuredClientOrigin || "http://localhost:5173",
+  clientOrigin: normalizeOrigin(process.env.CLIENT_ORIGIN) || (
+    nodeEnv === "production" ? productionClientOrigin : "http://localhost:5173"
+  ),
   corsOrigins: [
     ...(process.env.CORS_ORIGINS || "")
       .split(",")
