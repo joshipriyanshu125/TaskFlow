@@ -19,11 +19,11 @@ import {
 export function LandingPage({ onOpenAuth }) {
   // Live interactive workspace showcase
   const [tasks, setTasks] = useState([
-    { id: 1, title: '🚀 Production deployment & database migration', priority: 'urgent', category: 'Engineering', due: 'Today', completed: false },
-    { id: 2, title: '🎨 Refine dashboard dark theme & calendar view', priority: 'high', category: 'Design', due: 'Tomorrow', completed: false },
-    { id: 3, title: '🔐 Implement secure password reset & SMTP flow', priority: 'urgent', category: 'Security', due: 'Oct 8', completed: true },
-    { id: 4, title: '⚡ Multi-user real-time WebSocket sync engine', priority: 'medium', category: 'Backend', due: 'Oct 10', completed: true },
-    { id: 5, title: '📨 Automated email digest & daily task summary', priority: 'low', category: 'Automation', due: 'Oct 14', completed: false }
+    { id: 1, title: '📋 Finalize Q4 product roadmap & milestones', priority: 'urgent', category: 'Strategy', due: 'Today', completed: false },
+    { id: 2, title: '🎯 Launch marketing campaign for new feature', priority: 'high', category: 'Marketing', due: 'Tomorrow', completed: false },
+    { id: 3, title: '✅ Review and approve client deliverables', priority: 'urgent', category: 'Client', due: 'Oct 8', completed: true },
+    { id: 4, title: '🎨 Update brand guidelines & design system', priority: 'medium', category: 'Design', due: 'Oct 10', completed: true },
+    { id: 5, title: '📊 Prepare weekly team performance report', priority: 'low', category: 'Analytics', due: 'Oct 14', completed: false }
   ]);
 
   const [activeTab, setActiveTab] = useState('all');
@@ -41,11 +41,13 @@ export function LandingPage({ onOpenAuth }) {
   const handleAddTask = (e) => {
     e.preventDefault();
     if (!newTaskTitle.trim()) return;
+    const categories = ['Strategy', 'Marketing', 'Design', 'Client', 'Analytics'];
+    const priorities = ['urgent', 'high', 'medium', 'low'];
     const newTask = {
       id: Date.now(),
       title: newTaskTitle.trim(),
-      priority: 'high',
-      category: 'Design',
+      priority: priorities[Math.floor(Math.random() * priorities.length)],
+      category: categories[Math.floor(Math.random() * categories.length)],
       due: 'This week',
       completed: false
     };
@@ -164,19 +166,19 @@ export function LandingPage({ onOpenAuth }) {
                 <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: 'var(--accent-terracotta-light)', color: 'var(--accent-terracotta)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={14} strokeWidth={3} />
                 </div>
-                <span>Keyboard-friendly navigation & fast shortcuts</span>
+                <span>Keyboard-friendly navigation & instant search</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.925rem', color: 'var(--text-primary)' }}>
                 <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: 'var(--accent-terracotta-light)', color: 'var(--accent-terracotta)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={14} strokeWidth={3} />
                 </div>
-                <span>Instant cloud synchronization with MongoDB backend</span>
+                <span>Real-time sync across all your devices</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', fontSize: '0.925rem', color: 'var(--text-primary)' }}>
                 <div style={{ width: 22, height: 22, borderRadius: '50%', backgroundColor: 'var(--accent-terracotta-light)', color: 'var(--accent-terracotta)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={14} strokeWidth={3} />
                 </div>
-                <span>Workspace isolation & collaborative team sharing</span>
+                <span>Team workspaces with role-based access</span>
               </div>
             </div>
           </div>
@@ -187,7 +189,7 @@ export function LandingPage({ onOpenAuth }) {
             <div className="preview-top-bar">
               <div className="preview-project-badge">
                 <span className="preview-live-dot" />
-                <span>Sprint 4.2 • Core Release</span>
+                <span>My Workspace • Product Launch</span>
               </div>
 
               <div className="preview-filter-tabs">
@@ -287,7 +289,7 @@ export function LandingPage({ onOpenAuth }) {
               <input
                 type="text"
                 className="preview-add-input"
-                placeholder="Try adding a task (e.g. 'Deploy staging build')..."
+                placeholder="Try it — add a task (e.g. 'Plan team standup')..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
               />
