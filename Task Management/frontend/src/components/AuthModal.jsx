@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, AlertCircle, Loader2, Eye, EyeOff, Mail, Lock, Unlock, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { X, AlertCircle, Loader2, Eye, EyeOff, Mail, Lock, Unlock, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { api } from '../api';
 
 export function AuthModal({ initialMode = 'signin', onClose, onSuccess }) {
@@ -153,28 +153,6 @@ export function AuthModal({ initialMode = 'signin', onClose, onSuccess }) {
     }
   };
 
-  // Quick Demo Account Helper
-  const handleQuickDemo = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setError('');
-    setLoading(true);
-    try {
-      const demoEmail = 'demo@taskflow.dev';
-      const demoPass = 'Password123!';
-      try {
-        const data = await api.signin(demoEmail, demoPass);
-        onSuccess(data.user);
-      } catch (signinErr) {
-        const data = await api.signup('Demo User', demoEmail, demoPass);
-        onSuccess(data.user);
-      }
-    } catch (err) {
-      setError('Demo mode unavailable. Please sign up or sign in with a real account.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   /* ── Forgot Password: Email input form (no nested <form>) ── */
   const renderForgotPassword = () => (
@@ -437,24 +415,6 @@ export function AuthModal({ initialMode = 'signin', onClose, onSuccess }) {
         )}
       </button>
 
-      {/* 1-Click Demo Account */}
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
-        style={{
-          width: '100%',
-          padding: '0.65rem',
-          marginBottom: '1.5rem',
-          fontSize: '0.875rem',
-          color: 'var(--accent-terracotta)',
-          borderColor: 'var(--accent-terracotta-border)',
-          backgroundColor: 'var(--accent-terracotta-light)',
-        }}
-        onClick={handleQuickDemo}
-        disabled={loading}
-      >
-        <Sparkles size={15} /> 1-Click Demo Mode
-      </button>
     </>
   );
 
@@ -574,24 +534,6 @@ export function AuthModal({ initialMode = 'signin', onClose, onSuccess }) {
         )}
       </button>
 
-      {/* 1-Click Demo Account */}
-      <button
-        type="button"
-        className="btn btn-secondary btn-sm"
-        style={{
-          width: '100%',
-          padding: '0.65rem',
-          marginBottom: '1.5rem',
-          fontSize: '0.875rem',
-          color: 'var(--accent-terracotta)',
-          borderColor: 'var(--accent-terracotta-border)',
-          backgroundColor: 'var(--accent-terracotta-light)',
-        }}
-        onClick={handleQuickDemo}
-        disabled={loading}
-      >
-        <Sparkles size={15} /> 1-Click Demo Mode
-      </button>
     </>
   );
 

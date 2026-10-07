@@ -5,6 +5,17 @@ const gmailUser = config.smtp.user;
 const gmailPass = config.smtp.pass;
 const RESEND_API_URL = "https://api.resend.com/emails";
 
+// Normalize EMAIL_FROM: strip wrapping double-quotes left over from .env parsing
+function normalizeFrom(raw) {
+  if (!raw) return null;
+  let cleaned = raw.trim();
+  // Remove wrapping double-quotes (e.g. "\"TaskFlow <email>\"" → "TaskFlow <email>")
+  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+  return cleaned || null;
+}
+
 let transporter = null;
 
 if (!config.resendApiKey && gmailUser && gmailPass) {
@@ -29,8 +40,10 @@ export async function sendEmail({ to, subject, html, text }) {
     return { success: false, message: "Recipient email is required" };
   }
 
+  const emailFrom = normalizeFrom(config.smtp.from);
+
   if (config.resendApiKey) {
-    if (!config.smtp.from) {
+    if (!emailFrom) {
       console.error("[Email] EMAIL_FROM is required when using the Resend API.");
       return { success: false, message: "Email sender is not configured" };
     }
@@ -43,7 +56,7 @@ export async function sendEmail({ to, subject, html, text }) {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          from: config.smtp.from,
+          from: emailFrom,
           to: [to],
           subject,
           ...(text || html ? { text: text || html.replace(/<[^>]*>?/gm, "") } : {}),
@@ -74,7 +87,7 @@ export async function sendEmail({ to, subject, html, text }) {
 
   try {
     const info = await transporter.sendMail({
-      from: config.smtp.from || `"TaskFlow" <${gmailUser}>`,
+      from: emailFrom || `TaskFlow <${gmailUser}>`,
       to,
       subject,
       text: text || html?.replace(/<[^>]*>?/gm, "") || "",
