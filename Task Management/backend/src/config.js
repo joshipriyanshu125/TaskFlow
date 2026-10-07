@@ -1,6 +1,6 @@
 import "dotenv/config";
 
-const productionClientOrigin = "https://taskflow-frontend-two-ecru.vercel.app";
+const productionClientOrigin = "https://taskflow-frontend-blond.vercel.app";
 const nodeEnv = process.env.NODE_ENV || "development";
 const normalizeOrigin = (value) => {
   const trimmed = value?.trim();

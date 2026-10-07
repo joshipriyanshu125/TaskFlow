@@ -123,7 +123,11 @@ app.use(errorHandler);
 connectDatabase()
   .then(() => {
     initScheduler();
-    server.listen(config.port, () => console.log(`API & Real-time WebSockets listening on http://localhost:${config.port}`));
+    server.listen(config.port, () => {
+      const addr = server.address();
+      const host = addr.address === '::' || addr.address === '0.0.0.0' ? '0.0.0.0' : addr.address;
+      console.log(`API & Real-time WebSockets listening on http://${host}:${addr.port}`);
+    });
   })
   .catch((error) => {
     console.error("Unable to start the API", error);
